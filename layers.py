@@ -19,14 +19,11 @@ class GraphConvolution(Module):
         self.time_weight = time_weight
         self.out_features = out_features
         self.device = device
-        # self.rows = in_features
-        # self.cols = out_features
 
         cell_args = u.Namespace({})
         cell_args.rows = in_features
         cell_args.cols = out_features
 
-        # LSTM
         self.evolve_weights = mat_LSTM_cell(cell_args,device)
 
         self.weight = Parameter(torch.FloatTensor(in_features, out_features))
@@ -37,9 +34,9 @@ class GraphConvolution(Module):
         self.reset_parameters()
 
         if self.time_step>=1:
-            self.GCN_weights = self.evolve_weights(self.time_weight, device) # 调用mat_LSTM_cell
+            self.GCN_weights = self.evolve_weights(self.time_weight, device) 
             self.dgcn_weight = self.GCN_weights
-            self.dgcn_weight = Parameter(self.dgcn_weight) #Parameter:默认有梯度,将一个不可训练的tensor转换成可以训练的类型parameter
+            self.dgcn_weight = Parameter(self.dgcn_weight) 
 
 
     def reset_parameters(self):
@@ -52,23 +49,18 @@ class GraphConvolution(Module):
 
     def forward(self, input, adj):
         if self.time_step >= 1:
-            # 8.使用LSTM更新GCN的权重参数
             self.first_weight = self.dgcn_weight
-            # print("--------self.first_weight-------------")
-            # print(self.first_weight.shape) #[136, 90]
-            # print(input.shape) #[8704, 90]
-            input = input.reshape(-1, self.first_weight.shape[0]) #[5760,136]
+            input = input.reshape(-1, self.first_weight.shape[0])
             support = torch.mm(input, self.first_weight)
             support = support.transpose(0, 1)
-            output = torch.spmm(adj, support) #[90, *]
+            output = torch.spmm(adj, support)
         else:
-            self.first_weight = self.weight #[136, 90]
+            self.first_weight = self.weight 
             input = input.reshape(-1, self.first_weight.shape[0])
-            support = torch.mm(input, self.first_weight) # tensor维度必须为2,[a,b] [b,c] -> [a,c] [5760,90]
+            support = torch.mm(input, self.first_weight) 
             support = support.transpose(0, 1)
-            adj = adj.to(torch.float32) #[90,90]
-            output = torch.spmm(adj, support) # 矩阵乘法 [90,*]
-        # print(self.bias.shape) # 128
+            adj = adj.to(torch.float32) 
+            output = torch.spmm(adj, support)
         if self.bias is not None:
             return output + self.bias, self.first_weight
         else:
@@ -84,8 +76,6 @@ class mat_LSTM_cell(torch.nn.Module):
     def __init__(self, args, device):
         super().__init__()
         self.args = args  ##arg.rows = in_feats; arg.cols= out_feats
-        # print(args.rows) # 90 即features.shape[1]
-        # print(args.cols) # 90 即args.hidden
         self.update = mat_LSTM_gate(args.rows,
                                    args.cols,
                                    torch.nn.Sigmoid().to(device), device)
@@ -102,12 +92,9 @@ class mat_LSTM_cell(torch.nn.Module):
                                 k=args.cols)
 
     def forward(self, prev_Q,device):  # ,prev_Z,mask):
-        # z_topk = self.choose_topk(prev_Z,mask)
         prev_Q = prev_Q.to(device)
         prev_Q = prev_Q
         z_topk = prev_Q
-        # print("--------mat_LSTM_cell-----------")
-        # print(prev_Q)
 
         update = self.update(z_topk, prev_Q)
         reset = self.reset(z_topk, prev_Q)
