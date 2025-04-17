@@ -1,5 +1,3 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 import argparse
 import torch
 import torch.nn as nn
@@ -8,9 +6,9 @@ import numpy as np
 
 from tqdm import tqdm
 
-from Utils.util import load_data_our, separate_data
-from models.graphcnn_lstm_DiceNew_RML import DGCN, Graph_Inception
-from Utils.pytorchtools_lstm_dice_RML import EarlyStopping
+from util import load_data_our, separate_data
+from graphcnn import DGCN, Graph_Inception
+from pytorchtools_DiceNew import EarlyStopping
 
 import scipy.sparse as sp
 import time
@@ -21,115 +19,12 @@ from sklearn.metrics import f1_score, accuracy_score
 criterion = nn.CrossEntropyLoss()
 
 
-"""DCN-train"""
-# def train(args, model, device, train_graphs, optimizer, epoch, A, time_step, features, last_embedding, patience, batch_size):
-#     total_iters = args.iters_per_epoch
-#     pbar = tqdm(range(total_iters), unit='batch')
-#
-#     loss_accum = 0
-#     accum = 0
-#     best_loss = float("inf")
-#
-#     for pos in pbar:
-#         selected_idx = np.random.permutation(len(train_graphs))[:args.batch_size]
-#         batch_graph = [train_graphs[idx] for idx in selected_idx] # list类型求大小 128
-#
-#         if time_step >= 1:
-#             output, labels = model(batch_graph, A, last_embedding)
-#         else:
-#             output, labels = model(batch_graph, A)
-#         # print("-----train---------")
-#         # print(output.shape)#[128， 6]
-#         # print(labels.shape) #[128， 408]
-#         # print(output)# 正负的值
-#         # print(labels) # 0，1数组
-#         labels_ = torch.LongTensor([graph.label for graph in batch_graph]).to(device) #[128] 真实数据集中的标签(RML:0~5)
-#
-#         loss = criterion(output, labels_)
-#
-#         _, pred_ = torch.max(output, 1)
-#         correct = pred_.eq(labels_.view_as(pred_)).sum().cpu().item()  # view_as:该函数的作用是将调用函数的变量，转变为同参数tensor同样的形状,转换前后元素数量不变
-#         acc_train = correct / float(len(batch_graph))
-#         # backprop
-#         if optimizer is not None:
-#             optimizer.zero_grad()
-#             loss.backward()
-#             optimizer.step()
-#
-#         loss = loss.detach().cpu().numpy()
-#         loss_accum += loss
-#         accum += acc_train
-#
-#         # report
-#         pbar.set_description('epoch: %d' % (epoch))
-#
-#
-#     average_loss = loss_accum / total_iters
-#     average_acc = accum / total_iters
-#     print("Training Loss : %f" % (average_loss))
-#     print("Training Acc : %f" % (average_acc))
-#
-#
-#     return average_loss
-#
-# def pass_data_iteratively(model, graphs, A, minibatch_size = 64):
-#     model.eval()
-#     output = []
-#     label = []
-#     idx = np.arange(len(graphs))
-#     for i in range(0, len(graphs), minibatch_size):
-#         sampled_idx = idx[i:i+minibatch_size]
-#         if len(sampled_idx) == 0:
-#             continue
-#         graph = [graphs[j] for j in sampled_idx] #[[graph,]]
-#         output.append(model(graph, A)[0].detach())  #  troch.detach():返回一个新的tensor,永远不需要计算其梯度
-#         label.append(model(graph, A)[1].detach())
-#         # print("--------------------")
-#         # print(model(graph, A)[0].shape)
-#     # torch.cat:除拼接维数dim数值可不同外其余维数数值需相同，方能对齐
-#     return torch.cat(output, 1), torch.cat(label, 1)
-# def test(args, model, features, A, test_graphs, train_graphs, device):
-#     model.eval()
-#     with torch.set_grad_enabled(False):
-#         selected_idx = np.random.permutation(len(train_graphs))[:args.batch_size]
-#         batch_graph = [train_graphs[idx] for idx in selected_idx]  # list类型求大小 128
-#         output, l = model(batch_graph, A)
-#         _, pred_ = torch.max(output, 1)
-#         labels = torch.LongTensor([graph.label for graph in batch_graph]).to(device)  # [64]
-#         correct = pred_.eq(
-#             labels.view_as(pred_)).sum().cpu().item()  # view_as:该函数的作用是将调用函数的变量，转变为同参数tensor同样的形状,转换前后元素数量不变
-#         acc_train = correct / float(len(batch_graph))
-#
-#         avg_accuracy_train = round(accuracy_score(labels.cpu().detach(), pred_.cpu().detach()) * 100, 2)
-#         avg_fscore_train = round(f1_score(labels.cpu().detach(), pred_.cpu().detach(), average='weighted') * 100, 2)
-#
-#         selected_idx = np.random.permutation(len(test_graphs))[:args.batch_size]
-#         batch_graph = [test_graphs[idx] for idx in selected_idx]  # list类型求大小 128
-#         output, weight = model(batch_graph, A)
-#         _, pred_ = torch.max(output, 1)  # [128]
-#         labels = torch.LongTensor([graph.label for graph in batch_graph]).to(device)  # [128]
-#         correct = pred_.eq(labels.view_as(pred_)).sum().cpu().item()
-#         acc_test = correct / float(len(batch_graph))
-#
-#         avg_accuracy_test = round(accuracy_score(labels.cpu().detach(), pred_.cpu().detach()) * 100, 2)
-#         avg_fscore_test = round(f1_score(labels.cpu().detach(), pred_.cpu().detach(), average='weighted') * 100, 2)
-#
-#         print("----------------------All_ACC-------------------------------")
-#         print("Accuracy train: %f test: %f" % (acc_train, acc_test))
-#
-#         print("----------------------avg_ACC  avg_F1-------------------------------")
-#         print("Train avg_ACC: %f avg_F1: %f" % (avg_accuracy_train, avg_fscore_train))
-#         print("Test avg_ACC: %f avg_F1: %f" % (avg_accuracy_test, avg_fscore_test))
-#     return avg_accuracy_test, avg_fscore_test, weight
-'''Inception'''
 def Comp_loss(pred, label, pred_Adj, Adj, Adj_factor, Adj_factor_2, pred_Pool, Pool, Pool_factor):
     # Adj: A=(i-j)**2
-    # LGC 图分类损失函数
     loss = criterion(pred, label)
 
     m = nn.Threshold(0, 0)
     pred_Adj = m(pred_Adj)
-    # LGL 图学习损失函数
     loss += Adj_factor * (torch.mean(torch.mul(pred_Adj, Adj))) + Adj_factor_2 * (torch.sqrt(torch.mean((Adj - torch.zeros_like(Adj)) ** 2)) )
     loss += Pool_factor * torch.sqrt(torch.mean((pred_Pool - torch.zeros_like(pred_Pool)) ** 2)) # torch.zeros_like:生成和括号内变量维度维度一致的全是零的内容
     return loss
@@ -157,7 +52,7 @@ def train(args, model, device, train_graphs, optimizer, epoch, A):
                          , Adj_factor, Adj_factor_2, model.Pool.to(device), torch.ones(size=([len(batch_graph[0].g)])).to(device), Pool_factor)
 
         _, pred_ = torch.max(output, 1)
-        correct = pred_.eq(labels.view_as(pred_)).sum().cpu().item()  # view_as:该函数的作用是将调用函数的变量，转变为同参数tensor同样的形状,转换前后元素数量不变
+        correct = pred_.eq(labels.view_as(pred_)).sum().cpu().item() 
         acc_train = correct / float(len(batch_graph))
 
         # backprop
@@ -284,7 +179,6 @@ def main():
 
     time_weight_list = [0]
     embedding_list = [0]
-    # 局部图的遍历
     for i in range(1):
         acc_test = 0
         f1_test = 0
@@ -295,18 +189,12 @@ def main():
         for t in range(graph_num):
             print("*********************** |Graph number:|   **********************：%i" % (t))
             dice = 1.0
-            num_nodes = num_node # RML数据集： num_nodes =90
-            # 2.动态获取adj、特征、图
+            num_nodes = num_node
             A, features, graph = get_afldata(dice, graphs[t], num_nodes)
             A = A.to(device)  # torch.Size([90, 90])
             features = features.to(device)
 
-            # # 距离
             A_adj = np.zeros([num_nodes, num_nodes])
-            # for i in range(num_nodes):
-            #     for j in range(num_nodes):
-            #         A_adj[i, j] = (i - j) ** 2
-            # # 手动定义
             for i in range(num_nodes-1):
                 A_adj[i, i+1] = 1
                 A_adj[i+1, i] = 1
@@ -318,22 +206,7 @@ def main():
 
             #iniial adjacency matrix
             num_nodes = train_graphs[0].node_features.shape[0] # 90
-            # print(num_nodes)
 
-
-
-            # print("---------features.shape[1]----------")
-            # print(features.shape[1]) # 90
-            # print("---------train_graphs[0][0].node_features.shape[1]----------")
-            # print(train_graphs[0].node_features.shape[1])  # 136
-            # model = DGCN(device, num_nodes, args.batch_size, num_classes,A, num_feat=train_graphs[0].node_features.shape[1],
-            #              num_hid=args.hidden,
-            #              time_step=t,
-            #              graph=graph,
-            #              time_weight=time_weight_list[-1],
-            #              dropout=args.dropout,
-            #              rho=args.rho,
-            #              corruption=args.corruption).to(device)
             model = Graph_Inception(args.num_layers, train_graphs[0].node_features.shape[1],
                                     num_classes, args.final_dropout,
                                     device, args.dataset, args.batch_size, num_nodes,
@@ -355,21 +228,10 @@ def main():
             for epoch in range(1, args.epochs + 1):
                 scheduler.step()
                 # Train
-                '''DGCN'''
-                # train(args, model, device, train_graphs, optimizer, epoch, A, t, features, embedding_list[-1], args.patience, args.batch_size)
-                '''Inception'''
                 train(args, model, device, train_graphs, optimizer, epoch, A)
                 if (epoch > 1):
                     #### Validation check
                     with torch.no_grad():
-                        '''DGCN'''
-                        # selected_idx = np.random.permutation(len(test_graphs))[:args.batch_size]
-                        # batch_graph = [test_graphs[idx] for idx in selected_idx]  # list类型求大小 128
-                        # val_out, _ = model(batch_graph, A) #[128, 6]
-                        # val_labels = torch.LongTensor([graph.label for graph in batch_graph]).to(device)  # [128]
-                        # val_loss = criterion(val_out, val_labels)
-                        # val_loss = np.average(val_loss.detach().cpu().numpy())
-                        '''Inception'''
                         val_out, _ = pass_data_iteratively(model, test_graphs, A)
                         val_labels = torch.LongTensor([graph.label for graph in test_graphs]).to(device)
                         val_loss = criterion(val_out, val_labels)
@@ -383,18 +245,14 @@ def main():
                         break
             # Test
             model.load_state_dict(torch.load('Saved_models/checkpoint_dice_RML_2.pt'))
-            '''DGCN'''
-            # avg_accuracy_test, avg_fscore_test, weight = test(args, model, features, A, test_graphs, train_graphs, device)
-            '''Inception'''
             avg_accuracy_test, avg_fscore_test, weight = test(args, model, device, train_graphs, test_graphs, num_classes, A)
             time_weight_list.append(weight)
             acc_test += avg_accuracy_test
             f1_test += avg_fscore_test
 
-        # 计算所有图的结果
         acc_test_sum_F += acc_test / graph_num
         f1_test_sum_F += f1_test / graph_num
-        print("                                                                               {}折交叉验证，模型ACC:{}，F1:{}".format(i, acc_test_sum_F, f1_test_sum_F))
+        print("                                                                               {} fold cross validation, ACC:{}，F1:{}".format(i, acc_test_sum_F, f1_test_sum_F))
 
 
 if __name__ == '__main__':
