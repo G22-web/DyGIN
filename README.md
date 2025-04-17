@@ -30,11 +30,11 @@ Note: you can download the processed data from [here](https://drive.google.com/f
 
 ## Training
 
-You can train a simple model with _main_Inception_ or the full model with _main_Inception_learning_adj_pool_
+You can train a simple model with _main_DiceNew_ 
 
 
 ```
-usage: main_Inception.py
+usage: main_DiceNew.py
 
 optional arguments:
   -h, --help          Show this help message and exit
