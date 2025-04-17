@@ -10,7 +10,7 @@ from torch.nn import init
 from scipy.linalg import fractional_matrix_power
 sys.path.append("models/")
 from mlp import MLP
-from layers_RML import GraphConvolution
+from layers import GraphConvolution
 
 
 
@@ -53,11 +53,6 @@ class GraphConv_kipf(nn.Module):
         super(GraphConv_kipf, self).__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
-        # self.weight = nn.Parameter(
-        #         torch.FloatTensor(in_dim, out_dim))
-        # self.bias = nn.Parameter(torch.FloatTensor(out_dim))
-        # init.xavier_uniform_(self.weight)
-        # init.constant_(self.bias, 0)
 
         self.MLP = MLP(num_layers, in_dim, hidden_dim, out_dim)
         self.batchnorm = nn.BatchNorm1d(out_dim)
@@ -74,8 +69,6 @@ class GraphConv_kipf(nn.Module):
         deg_mat = Comp_degree(A_norm)
         frac_degree = torch.FloatTensor(fractional_matrix_power(deg_mat.cpu(),
                                                                 -0.5)).cuda()
-        # frac_degree = torch.FloatTensor(fractional_matrix_power(deg_mat.cpu().detach().numpy(),
-        #                                                         -0.5)).cuda()
 
         A_hat = torch.matmul(torch.matmul(frac_degree
             , A_norm), frac_degree)
@@ -106,12 +99,8 @@ class GraphConv(nn.Module):
     def forward(self, features, A, t):
         b, n, d = features.shape  # torch.Size([64, 90, 136])
         assert (d == self.in_dim)  # [136]
-
-        # print("--------MLP---------")
-        # print(A.shape) #[90,90]
         repeated_A = A.repeat(b, 1, 1)  # #torch.Size([64, 90, 90])
 
-        '''包含MLP'''
         repeated_A = torch.tensor(repeated_A, dtype=torch.float32)
         agg_feats = torch.bmm(repeated_A,
                               features)  # [64,90,136]torch.bmm(a,b),tensor a 的size为(b,h,w),tensor b的size为(b,w,m)
@@ -127,14 +116,8 @@ class Inception_layer(nn.Module):
         super(Inception_layer, self).__init__()
         self.input_dim = input_dim
         self.num_layers = 2
-        '''baseline'''
         self.GCN_1 = GraphConv(self.num_layers, self.input_dim, int((self.input_dim + 128) / 4), 128)
         self.GCN_2 = GraphConv(self.num_layers, self.input_dim, int((self.input_dim + 64) / 4), 64)
-
-        '''增加小批次的GCN'''
-        # self.GCN = GraphConv(self.num_layers, self.input_dim, int((self.input_dim + 32) / 4), 32)
-        # self.GCN_1 = GraphConv(self.num_layers, 32, int((self.input_dim + 128) / 4), 128)
-        # self.GCN_2 = GraphConv(self.num_layers, 32, int((self.input_dim + 64) / 4), 64)
     def maxpool(self, h, padded_neighbor_list):
         ###Element-wise minimum will never affect max-pooling
 
@@ -145,33 +128,10 @@ class Inception_layer(nn.Module):
 
     def forward(self, A, h, padded_neighbor_list, t):
         b, c, d = h.shape
-        '''baseline'''
         out_1 = self.maxpool(h.view(-1, d), padded_neighbor_list).view(h.shape)
         out_2 = self.GCN_1(h, A, t)
         out_3 = self.GCN_2(h, A, t)
         out = torch.cat((out_1, out_2, out_3), dim=2)
-
-        '''增加小批次的GCN'''
-        # out_1 = self.maxpool(h.view(-1, d), padded_neighbor_list).view(h.shape)  # torch.Size([128, 90, 136])
-        # # print("-----0-----")
-        # # print(out_1.shape)
-        # out_1_1 = self.GCN(out_1, A)  # torch.Size([128, 90, 32])
-        # # print("-----1-----")
-        # # print(out_1_1.shape)
-        # out_2_1 = self.GCN(h, A) # torch.Size([128, 90, 32])
-        # # print("----2------")
-        # # print(out_2_1.shape)
-        # out_2 = self.GCN_1(out_2_1, A)  # torch.Size([128, 90, 128])
-        # # print("----3------")
-        # # print(out_2.shape)
-        # out_3_1 = self.GCN(h, A) # torch.Size([128, 90, 32])
-        # # print("----4------")
-        # # print(out_3_1.shape)
-        # out_3 = self.GCN_2(out_3_1, A)  # torch.Size([128, 90, 64])
-        # # print("----5------")
-        # # print(out_3.shape)
-        #
-        # out = torch.cat((out_1_1, out_2, out_3),dim=2)  # torch.Size([128, 90, 328]) torch.cat:除拼接维数dim数值可不同外其余维数数值需相同，方能对齐
 
         return out
 
@@ -225,8 +185,6 @@ class Graph_Inception(nn.Module):
         ###List of Inception layers
         self.Inceptions = torch.nn.ModuleList()
         c = 0
-        # print("---------------input_dim:---------------------")
-        # print(input_dim) # 136
         for i in range(self.num_layers):
             self.Inceptions.append(Inception_layer(input_dim+c))
             c += 192
@@ -235,21 +193,12 @@ class Graph_Inception(nn.Module):
         cell_args.rows = input_dim  # 136
         cell_args.cols = input_dim
 
-        # cell_args = u.Namespace({})
-        # cell_args.rows = input_dim  # 136
-        # cell_args.cols = num_hid
+        self.evolve_weights = mat_LSTM_cell(cell_args, device)
 
-
-        # LSTM
-        self.evolve_weights = mat_LSTM_cell(cell_args, device) # GRU(W_t-1)
-        # self.evolve_weights = mat_LSTM_cell_2(cell_args, device)  # GRU(H_t-1, W_t-1)、GRU(H_t-1, A_t-1)
-
-        # self.weight = torch.nn.Parameter(torch.FloatTensor(input_dim, num_hid), requires_grad=True)
         self.weight = torch.nn.Parameter(torch.FloatTensor(input_dim, input_dim), requires_grad=True)
 
         self.Linear = nn.Linear(136, 136).to(device)
-        self.gru = nn.GRUCell(136, 136).to(device)  # 使用GRU进行权重更新
-
+        self.gru = nn.GRUCell(136, 136).to(device)  
         transformer_layer = nn.TransformerEncoderLayer(
             d_model=136,  # input feature (frequency) dim after maxpooling 128*563 -> 64*140 (freq*time)
             nhead=4,  # 4 self-attention layers in each multi-head self-attention layer in each encoder block
@@ -271,20 +220,12 @@ class Graph_Inception(nn.Module):
 
 
         if self.time_step>=1:
-            # 调用Transformer
             self.time_weight = self.time_weight.reshape(1, 136, 136)
             self.GCN_weights = self.transformer_encoder(self.time_weight)
             self.GCN_weights = self.GCN_weights.reshape(136, 136)
-            # print("---------self.time_weight----------")
-            # print(self.time_weight.shape) #[136,136]
-            # self.GCN_weights = self.evolve_weights(self.time_weight, device) # 调用mat_LSTM_cell
-            # self.GCN_weights = self.gru(self.time_weight, self.time_weight) # 调用GRU
-            # self.GCN_weights = self.Linear(self.time_weight)
-
-
 
             self.dgcn_weight = self.GCN_weights
-            self.dgcn_weight = torch.nn.Parameter(self.dgcn_weight,  requires_grad=True) #Parameter:默认有梯度,将一个不可训练的tensor转换成可以训练的类型parameter
+            self.dgcn_weight = torch.nn.Parameter(self.dgcn_weight,  requires_grad=True) 
 
 
 
@@ -293,28 +234,8 @@ class Graph_Inception(nn.Module):
         
 
         #Linear functions that maps the hidden representations to labels
-        '''baseline: Pooling层'''
-        # self.classifier = nn.Sequential(
-        #                     nn.Linear((c+input_dim)*3, 512),
-        #                     nn.Dropout(p=self.final_dropout),
-        #                     nn.PReLU(512),
-        #                     nn.Linear(512, output_dim))
-        '''max+min(h)+mean'''
-        # self.classifier = nn.Sequential(
-        #     nn.Linear(1041, 512),
-        #     nn.Dropout(p=self.final_dropout),
-        #     nn.PReLU(512),
-        #     nn.Linear(512, output_dim))
-        '''max、mean、min、len'''
-        # self.classifier = nn.Sequential(
-        #     nn.Linear(520, 512),
-        #     nn.Dropout(p=self.final_dropout),
-        #     nn.PReLU(512),
-        #     nn.Linear(512, output_dim))
-        '''len+mean'''
         self.classifier = nn.Sequential(
             nn.Linear(1040, 512),
-            # layer=0,(272,512); layer=1,(656,512);   layer=2,(1040, 512);  layer=3,(1424,512); layer=4,(1808,512);
             nn.Dropout(p=self.final_dropout),
             nn.PReLU(512),
             nn.Linear(512, output_dim))
@@ -350,7 +271,6 @@ class Graph_Inception(nn.Module):
 
     def forward(self, batch_graph, A):
         X_concat = torch.cat([graph.node_features.view(1,-1,graph.node_features.shape[1]) for graph in batch_graph], 0).to(self.device)
-        # A = self.Adj_ # 可学习的
 
         B, N, D = X_concat.shape # 64, 90, 136
 
@@ -359,80 +279,37 @@ class Graph_Inception(nn.Module):
         X_concat = X_concat.view(B, N, D)
 
 
-        padded_neighbor_list = self.__preprocess_neighbors_maxpool(batch_graph) # [5760, 2]
+        padded_neighbor_list = self.__preprocess_neighbors_maxpool(batch_graph)
 
 
         h = X_concat #[64, 90, 136]
 
-        ''' LSTM 捕获动态图的时间信息'''
         if self.time_step >= 1:
+            h = h.reshape(-1, 136) 
+            self.first_weight = self.dgcn_weight
+          
 
-            '''GRU(X_t-1,W_t-1)'''
-            # GCN_weights = self.evolve_weights(self.time_weight, h, self.device)  # 调用mat_LSTM_cell
-            # dgcn_weight = GCN_weights
-            # dgcn_weight = torch.nn.Parameter(dgcn_weight,  requires_grad=True) #[136,5760] Parameter:默认有梯度,将一个不可训练的tensor转换成可以训练的类型parameter
-            # self.first_weight = dgcn_weight  # [136, 5760]
-            # print(self.first_weight.shape)
-            # h = h.reshape(-1,136)
-            # h = torch.mm(h, self.first_weight) # [136 5760]
-            # h = h.view(B, N, D)  # [64, 90, 136]
-            #
-            # for layer in self.Inceptions:
-            #     h = layer(A, h, padded_neighbor_list, self.time_step)
-
-            '''使用LSTM (W_t-1) or GRU 更新GCN的权重参数'''
-            h = h.reshape(-1, 136)  #  [5760, 136]
-            self.first_weight = self.dgcn_weight #[136, 136]
-            # first_weight = self.AutoModel(X_concat) # LSTM自编码器：参数必须是三维的
-            # print("-----first_weight-----------")
-            # print(first_weight.shape)
-
-            h = torch.mm(h, self.first_weight) #[5760 136]
-            h = h.view(B, N, D) #[64, 90, 136]
-            # Inception 层
+            h = torch.mm(h, self.first_weight)
+            h = h.view(B, N, D)
             for layer in self.Inceptions:
                 h = layer(A, h, padded_neighbor_list,self.time_step)
         else:
-            h = h.reshape(-1, 136) #[5760, 136]
-            self.first_weight = self.weight #[136,136]
-            h = torch.mm(h, self.first_weight)  # tensor维度必须为2,[a,b] [b,c] -> [a,c] #[5760, 136]
+            h = h.reshape(-1, 136)
+            self.first_weight = self.weight
+            h = torch.mm(h, self.first_weight) 
             h = h.view(B, N, D) #[64, 90, 136]
 
             for layer in self.Inceptions:
                 h = layer(A, h, padded_neighbor_list, self.time_step)
 
-        # 不添加LSTM
-        # self.first_weight = self.weight
-        # for layer in self.Inceptions:
-        #     h = layer(A, h, padded_neighbor_list)
-
-
-
-        # 池化层
         max_pool,ind = torch.max(h,dim=1) #[64, 520]
         min_pool = torch.min(h,dim=1)[0] #[64, 520]
         mean_pool = torch.mean(h,dim=1) #[64, 520]
         sum_pool= torch.sum(h, dim=1)
-        '''baseline: Pooling层'''
-        # repeated_pool = self.Pool.repeat(h.shape[0], 1, 1) # repeat():沿着指定的维度重复tensor的数据
-        # weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0],-1) # [64, 520] torch.bmm:两个tensor的矩阵乘法； view():重新调整Tensor的形状
-        # pooled = torch.cat((max_pool, weighted_pool, mean_pool), dim=1) # [64, 1560] 将tensor类型拼接起来
 
-        '''len+mean (目前)'''
-        repeated_pool = self.Pool.repeat(h.shape[0], 1, 1)  # repeat():沿着指定的维度重复tensor的数据
-        weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0], -1)  # [64, 520] torch.bmm:两个tensor的矩阵乘法； view():重新调整Tensor的形状
-        pooled = torch.cat((weighted_pool, mean_pool), dim=1)  #[64, 1040] 将tensor类型拼接起来
-
-        '''max+min(h)+mean'''
-        # repeated_pool = self.Pool.repeat(h.shape[0], 1, 1) # repeat():沿着指定的维度重复tensor的数据
-        # weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0],-1) # [128,50]; torch.bmm:两个tensor的矩阵乘法； view():重新调整Tensor的形状
-        # weighted_pool = torch.min(weighted_pool,dim=1)[0] # torch.Size([128])
-        # weighted_pool = weighted_pool.reshape(-1, 1) # torch.Size([128,1])
-        # pooled = torch.cat((max_pool, weighted_pool, mean_pool), dim=1) # [128,1041] 将tensor类型拼接起来
-
-        # print("---------pooled---------")
-        # print(pooled.shape)
-
+        repeated_pool = self.Pool.repeat(h.shape[0], 1, 1) 
+        weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0], -1) 
+        pooled = torch.cat((weighted_pool, mean_pool), dim=1)  
         score = self.classifier(pooled)
         return score, self.first_weight
 
@@ -441,27 +318,20 @@ class Graph_Inception(nn.Module):
         return F.sigmoid(x)
 
     def _node_shuffle(self, X, A, edge):
-        if edge:  # 边的打乱
-            perm_A = torch.randperm(A.size(0))  # 随机打乱后获得的数字序列
+        if edge:  
+            perm_A = torch.randperm(A.size(0)) 
             neg_A = A[perm_A]
             A = neg_A
-        else:  # 节点特征的打乱
-            # print("-----A-----")
-            # print(X.size(0)) #128
-            # print(X[torch.randperm(X.size(0))].shape)#[128,90,136]
-            perm = torch.randperm(X.size(0))  # 随机打乱后获得的数字序列
+        else:
+            perm = torch.randperm(X.size(0))  
             neg_X = X[perm]
             X = neg_X
-            # print(X.shape) #[128,90,136]
         return X, A
 
 class mat_LSTM_cell_2(torch.nn.Module):
     def __init__(self, args, device):
         super().__init__()
         self.args = args  ##arg.rows = in_feats; arg.cols= out_feats
-        # print("-------mat_LSTM_cell------------")
-        # print(args.rows) # 136
-        # print(args.cols) # 136
         self.update = mat_LSTM_gate_2(args.rows,
                                    args.cols,
                                    torch.nn.Sigmoid().to(device), device)
@@ -478,17 +348,15 @@ class mat_LSTM_cell_2(torch.nn.Module):
                                 k=args.cols)
 
     def forward(self, prev_Q, prev_Z, device):  # ,prev_Z,mask):
-        # z_topk = self.choose_topk(prev_Z) #[136, 12240]
-        z_topk = prev_Z  #[64,90,136] 特征矩阵 Xt-1
-        prev_Q = prev_Q.to(device) #[136,136] Wt-1
+        z_topk = prev_Z  
+        prev_Q = prev_Q.to(device) 
 
-        update = self.update(z_topk, prev_Q) # [136,5760]
-        reset = self.reset(z_topk, prev_Q) # [136,5760]
+        update = self.update(z_topk, prev_Q)
+        reset = self.reset(z_topk, prev_Q)
 
 
-        h_cap = reset * prev_Q #[136, 5760]
-        # h_cap = h_cap.reshape(B,N)
-        h_cap = self.htilda(z_topk, h_cap) # [136,680]
+        h_cap = reset * prev_Q 
+        h_cap = self.htilda(z_topk, h_cap) 
 
         new_Q = (1 - update) * prev_Q + update * h_cap
 
@@ -500,7 +368,7 @@ class mat_LSTM_gate_2(torch.nn.Module):
         super().__init__()
         self.activation = activation
         # the k here should be in_feats which is actually the rows
-        self.W = torch.nn.Parameter(torch.Tensor(rows, rows)).to(device) #[136,136]  torch.nn.Parameter:将一个不可训练的类型Tensor转换成可以训练的类型parameter
+        self.W = torch.nn.Parameter(torch.Tensor(rows, rows)).to(device) 
         self.reset_param(self.W)
 
         self.U = torch.nn.Parameter(torch.Tensor(rows, rows)).to(device) #[136,136]
@@ -518,19 +386,8 @@ class mat_LSTM_gate_2(torch.nn.Module):
         hidden = hidden #Wt-1:[136,136],
         x = x.reshape(136, -1)
 
-
-
-        # print("------2---------")
-        # # print(self.W.shape) #[136,136]
-        # # print(self.U.shape) #[136,136]
-        # print(self.W.matmul(x).shape) #[136,5760]
-        # print(self.U.matmul(hidden).shape) #[136,5760]
-        # print(self.bias.shape)#[136,5760]
-
         x = x.reshape(136, -1)
-        out = self.activation(self.W.matmul(x) + self.U.matmul(hidden) + self.bias)# 维度不同，调试不通
-        # out = self.activation(self.W.matmul(x) + self.U.matmul(hidden))  # 维度不同，调试不通
-
+        out = self.activation(self.W.matmul(x) + self.U.matmul(hidden) + self.bias)
         return out
 
 
@@ -538,9 +395,6 @@ class mat_LSTM_cell(torch.nn.Module):
     def __init__(self, args, device):
         super().__init__()
         self.args = args  ##arg.rows = in_feats; arg.cols= out_feats
-        # print("-------mat_LSTM_cell------------")
-        # print(args.rows) # 136
-        # print(args.cols) # 136
         self.update = mat_LSTM_gate(args.rows,
                                     args.cols,
                                     torch.nn.Sigmoid().to(device), device)
@@ -558,16 +412,16 @@ class mat_LSTM_cell(torch.nn.Module):
 
     def forward(self, prev_Q, device):  # ,prev_Z,mask):
         # z_topk = self.choose_topk(prev_Z,mask)
-        prev_Q = prev_Q.to(device)  # [680, 136]
+        prev_Q = prev_Q.to(device)  
         prev_Q = prev_Q
-        z_topk = prev_Q  # [64,90,136]
+        z_topk = prev_Q 
 
-        update = self.update(z_topk, prev_Q)  # [136,680]
-        reset = self.reset(z_topk, prev_Q)  # [136,680]
+        update = self.update(z_topk, prev_Q) 
+        reset = self.reset(z_topk, prev_Q)  
 
-        h_cap = reset * prev_Q  # [136, 680]
+        h_cap = reset * prev_Q  
         h_cap = h_cap.transpose(0, 1)
-        h_cap = self.htilda(z_topk, h_cap)  # [136,680]
+        h_cap = self.htilda(z_topk, h_cap) 
 
         new_Q = (1 - update) * prev_Q + update * h_cap
 
@@ -579,19 +433,13 @@ class mat_LSTM_gate(torch.nn.Module):
         super().__init__()
         self.activation = activation
         # the k here should be in_feats which is actually the rows
-        self.W = torch.nn.Parameter(torch.Tensor(rows, rows)).to(device)  # [136,136]  torch.nn.Parameter:将一个不可训练的类型Tensor转换成可以训练的类型parameter
-        # 不进行更新
-        # self.W = torch.Tensor(rows, rows).to(device)  # [136,136]  torch.nn.Parameter:将一个不可训练的类型Tensor转换成可以训练的类型parameter
+        self.W = torch.nn.Parameter(torch.Tensor(rows, rows)).to(device)
         self.reset_param(self.W)
 
-        self.U = torch.nn.Parameter(torch.Tensor(rows, rows)).to(device)  # [136,136]
-        # 不进行更新
-        # self.U = torch.Tensor(rows, rows).to(device)  # [136,136]
+        self.U = torch.nn.Parameter(torch.Tensor(rows, rows)).to(device)
         self.reset_param(self.U)
 
         self.bias = torch.nn.Parameter(torch.zeros(rows, cols)).to(device)
-        # 不进行更新
-        # self.bias = torch.zeros(rows, cols).to(device)
 
     def reset_param(self, t):
         # Initialize based on the number of columns
@@ -599,10 +447,10 @@ class mat_LSTM_gate(torch.nn.Module):
         t.data.uniform_(-stdv, stdv)
 
     def forward(self, x, hidden):
-        x = x  #
-        hidden = hidden  # [136,136]
+        x = x 
+        hidden = hidden
 
-        out = self.activation(self.W.matmul(x) + self.U.matmul(hidden) + self.bias)  # 单向GRU
+        out = self.activation(self.W.matmul(x) + self.U.matmul(hidden) + self.bias) 
         return out
 
 class TopK(torch.nn.Module):
@@ -633,9 +481,6 @@ class TopK(torch.nn.Module):
         if isinstance(node_embs, torch.sparse.FloatTensor) or \
                 isinstance(node_embs, torch.cuda.sparse.FloatTensor):
             node_embs = node_embs.to_dense()
-        # print("------------------")
-        # print( node_embs[topk_indices].shape) #[136 90, 136]
-        # print(tanh(scores[topk_indices].view(-1, 1)).shape) #[12240, 1]
         out = node_embs[topk_indices].view(-1, 136) * tanh(scores[topk_indices].view(-1, 1))
 
         # we need to transpose the output
@@ -709,19 +554,12 @@ class Graph_CNN_kipf(nn.Module):
 
         B, N, D = X_concat.shape
 
-        # X_concat = X_concat.view(-1, D)
-        # X_concat = self.bn0(X_concat)
-        # X_concat = X_concat.view(B, N, D)
-
         h = F.relu(self.GCN_1(X_concat, A))
         h = F.softmax(self.GCN_2(h, A))
 
-        # max_pool = torch.max(h,dim=1)[0]
-        # min_pool = torch.min(h,dim=1)[0]
-        # mean_pool = torch.mean(h,dim=1)
+
         repeated_pool = self.Pool.repeat(h.shape[0], 1, 1)
         weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0],-1)
-        # pooled = torch.cat((max_pool, min_pool, mean_pool), dim=1)
         pooled = weighted_pool
 
         score = self.classifier(pooled)
@@ -731,10 +569,8 @@ class Graph_CNN_kipf(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, n_h, device):
         super(Discriminator, self).__init__()
-        """
-        卷积神经网络中的全连接层需要调用nn.Linear就可以实现
-        """
-        self.net = nn.Bilinear(n_h, n_h, 1).to(device) # similar to score of CPC 与CPC分数相近，要求参数需是三维的
+
+        self.net = nn.Bilinear(n_h, n_h, 1).to(device) 
 
         for m in self.modules():
             self.weights_init(m)
@@ -753,12 +589,7 @@ class Discriminator(nn.Module):
         :param h_fk: fake hidden representation
         :return logits: prediction scores, (batch_size, num_nodes, 2)
         '''
-        # g = torch.unsqueeze(g, dim=1) #[128,1,128]
-        # H = H.reshape(g.shape[0], -1, g.shape[0]) #[128,90,128]
-        # neg_H = neg_H.reshape(g.shape[0], -1, g.shape[0])  # [128,90,128]
-        # neg_X = neg_X.reshape(g.shape[0], -1, g.shape[0])  # [128,90,128]
-        # g = g.expand_as(H).contiguous()  # 将s的维度指定为h_rl的维度，并将内存变成连续的 [128,90,128]
-
+  
         H = H.transpose(0,1) #[17408, 90]
         neg_H = neg_H.transpose(0, 1) #[17408, 90]
         neg_X = neg_X.transpose(0, 1) #[17408, 90]
@@ -787,22 +618,16 @@ class DGCN(nn.Module):
         self.num_classes = num_classes
         self.disc = Discriminator(num_hid, device)
 
-        # 伪标签
-        # lbl_rl = torch.ones(batch_size, num_nodes) #[128, 90]
-        # lbl_H_fk = torch.zeros(batch_size, num_nodes)
-        # lbl_X_fk = torch.zeros(batch_size, num_nodes)
-        # self.lbl = torch.cat((lbl_rl, lbl_H_fk, lbl_X_fk), dim=1).to(device) #[128, 270]
-        # 暂时木有用的，是否可以调用nn.Parameter使伪标签可学习
         lbl_rl = torch.ones(batch_size, 136)  # [64, 136]
         lbl_H_fk = torch.zeros(batch_size, 136)
         lbl_X_fk = torch.zeros(batch_size, 136)
-        self.lbl = torch.cat((lbl_rl, lbl_H_fk, lbl_X_fk), dim=1).to(device)  # [128, 408]
+        self.lbl = torch.cat((lbl_rl, lbl_H_fk, lbl_X_fk), dim=1).to(device)  
 
         self.Adj_ = torch.nn.Parameter(torch.rand([num_nodes, num_nodes]),
-                                       requires_grad=True)  # num_nodes * num_nodes维的张量; requires_grad默认值为True，表示可训练，False表示不可训练。
+                                       requires_grad=True)  
         self.Adj = A
         self.Pool = torch.nn.Parameter(torch.ones(size=([num_nodes])),
-                                       requires_grad=True)  # torch.ones:返回一个全为1 的张量，形状由可变参数sizes定义
+                                       requires_grad=True) 
 
         self.rho = rho
 
@@ -828,71 +653,21 @@ class DGCN(nn.Module):
         X_concat = X_concat.view(B, N, D)
         x = X_concat # torch.Size([64, 90, 136])
         x = x.view(-1, N)
-        # 7. 图卷积
         HHH, weight = self.gc(x, A) # hhh: [90,5760]
         HHH = HHH.reshape(B, N, N)
         h = self.prelu(HHH) # h: [64, 90, 90]
-        # print(H.shape)
 
-        # print(self.training) # True
-        # if not self.training:
-        #     return h, weight
-
-         # 池化层
         max_pool, ind = torch.max(h, dim=1)  # [64, 90]
         min_pool = torch.min(h, dim=1)[0]  # [64, 90]
         mean_pool = torch.mean(h, dim=1)  # [64, 90]
         sum_pool = torch.sum(h, dim=1)
-        '''baseline: Pooling层'''
-        # repeated_pool = self.Pool.repeat(h.shape[0], 1, 1) # repeat():沿着指定的维度重复tensor的数据
-        # weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0],-1) # [64, 520] torch.bmm:两个tensor的矩阵乘法； view():重新调整Tensor的形状
-        # pooled = torch.cat((max_pool, weighted_pool, mean_pool), dim=1) # [64, 1560] 将tensor类型拼接起来
 
-        '''len+mean'''
-        repeated_pool = self.Pool.repeat(h.shape[0], 1, 1)  #[64, 1, 90] repeat():沿着指定的维度重复tensor的数据
-        weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0], -1)  # [64, 520] torch.bmm:两个tensor的矩阵乘法； view():重新调整Tensor的形状
-        pooled = torch.cat((weighted_pool, mean_pool), dim=1)  # [64, 180] 将tensor类型拼接起来
-        # print(pooled.shape)
+        repeated_pool = self.Pool.repeat(h.shape[0], 1, 1) 
+        weighted_pool = torch.bmm(repeated_pool, h).view(h.shape[0], -1)  
+        pooled = torch.cat((weighted_pool, mean_pool), dim=1) 
 
         x_out = self.classifier(pooled)
         return x_out, weight
-
-        # 伪图
-        # x_, neg_A = self.corruption(x, A, edge=1) # 边打乱
-        # neg_X_, A_ = self.corruption(x, A, edge=0) # 节点特征打乱
-        #
-        #
-        # neg_X = F.dropout(neg_X_, self.dropout, training=self.training)
-        # neg_A = F.dropout(neg_A, self.dropout, training=self.training)
-        #
-        # neg_HHH, neg_weight_H = self.gc(x_, neg_A) # 边打乱
-        # neg_XXX, neg_weight_X = self.gc(neg_X, A_) # 节点特征打乱
-        #
-        # neg_H = self.prelu(neg_HHH) # 边打乱 伪图图卷积后 [90,16384]
-        # neg_X = self.prelu(neg_XXX) # 节点特征打乱 伪图图卷积后 [90,16384]
-        #
-        # d = 1
-        # if (d==0): # 两个伪图的局部图 与 原图的全局图 的 MI
-        #     g = self.readout(H)
-        #     g = g.reshape(-1,self.num_hid)
-        #     g = self.fc(g) # [90,90]
-        #     cat_num = torch.cat((H, neg_H, neg_X)) #[270,16384]
-        #     g = g.reshape(-1)
-        #     x_out = torch.mv(cat_num, g) # torch.mv()：矩阵向量乘法,第一个参数是二维矩阵、第二个参数是一维向量
-        #     labels = torch.cat((torch.ones(x.size(0)), torch.zeros(neg_X_.size(0)), torch.ones(x_.size(0)))).to(self.device)
-        #     # print("-------labels------")
-        #     # print(labels.shape) #[270]
-        # elif (d==1): # 两个伪图的局部图 与 原图的全局图 的 MI (使用AAAI 2023 ST-SSL中的方法)
-        #     g = self.readout(H) # 原图G的节点表示H -> 图级表示g [17408]
-        #     g = torch.unsqueeze(g, dim=1)  # [17408,1]
-        #     g = g.expand_as(H.transpose(0,1)).contiguous() # [17408,90]
-        #     g = self.fc(g) # # [17408,90]
-        #     # 鉴别器
-        #     x_out = self.disc(g, H, neg_H, neg_X) #[128, 408]
-        #     labels = self.lbl #[128,408]
-        #     x_out = self.classifier(x_out) #[128, 6]
-        #
-        # return x_out, labels
 
 
     def _average(self, features):
@@ -900,18 +675,14 @@ class DGCN(nn.Module):
         return F.sigmoid(x)
 
     def _node_shuffle(self, X, A, edge):
-        if edge: # 边的打乱
-            perm_A = torch.randperm(A.size(0))  # 随机打乱后获得的数字序列
+        if edge: 
+            perm_A = torch.randperm(A.size(0))  
             neg_A = A[perm_A]
             A = neg_A
-        else: # 节点特征的打乱
-            # print("-----A-----")
-            # print(X.size(0)) #128
-            # print(X[torch.randperm(X.size(0))].shape)#[128,90,136]
-            perm = torch.randperm(X.size(0))  # 随机打乱后获得的数字序列
+        else: 
+            perm = torch.randperm(X.size(0)) 
             neg_X = X[perm]
             X = neg_X
-            # print(X.shape) #[128,90,136]
         return X, A
 
     def euclidean_dist(self, x, y):
