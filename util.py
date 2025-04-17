@@ -55,7 +55,7 @@ def load_data(dataset, degree_as_tag, Normalize):
             if not l in label_dict:
                 mapped = len(label_dict)
                 label_dict[l] = mapped
-            g = nx.Graph() # 定义一个无向图
+            g = nx.Graph() 
             node_tags = []
             node_features = []
             n_edges = 0
@@ -92,10 +92,6 @@ def load_data(dataset, degree_as_tag, Normalize):
 
             if not (dataset=="Mine_Graph")or not (dataset == "Mine_Graph_test"):
                 assert len(g) == n
-            # print("-----------node-------------")
-            # print(node_tags) # list整数列表
-            # print("------------edge------------------")
-            # print(n_edges) # int类型，RML:90
             g_list.append(S2VGraph(g, l, node_tags))
 
     #add labels and edge_mat
@@ -122,7 +118,7 @@ def load_data(dataset, degree_as_tag, Normalize):
         for g in g_list:
             g.node_tags = list(dict(g.g.degree).values())
 
-    #Extracting unique tag labels   提取唯一标签
+    #Extracting unique tag labels   
     tagset = set([])
     for g in g_list:
         tagset = tagset.union(set(g.node_tags))
@@ -163,42 +159,28 @@ def load_data_our(dataset, degree_as_tag, Normalize):
     t = 0
 
     with open('dataset/%s/%s.txt' % (dataset, dataset), 'r') as f:
-        n_g = int(f.readline().strip()) # 1503
+        n_g = int(f.readline().strip())
         for i in range(n_g):
-            row = f.readline().strip().split() # f.readline():90 0； strip():去除空格； row:形式如下：['90', '1']到，['90', '5']第二维不固定
-            n, l = [int(w) for w in row] # n:row的第1维  l:row的第2维
+            row = f.readline().strip().split()
+            n, l = [int(w) for w in row] 
             if not l in label_dict:
                 mapped = len(label_dict)
                 label_dict[l] = mapped # {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
-            g = nx.Graph() # 定义一个无向图，Graph with 0 nodes and 0 edges
+            g = nx.Graph() 
             node_tags = []
             node_features = []
             n_edges = 0
             for j in range(n):
-                g.add_node(j) # 添加节点
-                # print("--------添加节点后的图g-------")
-                # print(g)
-                # print(g.number_of_nodes()) #查看g中有多少个结点 ,依次+1上升
+                g.add_node(j) 
                 row = f.readline().strip().split()
-                # print("--------row-------")
-                # print(row) # 从txt文件的第三行开始遍历
-
                 tmp = int(row[1]) + 2
-                # print("------------tmp-----------")
-                # print(tmp)
                 if tmp == len(row):
                     # no node attributes
                     row = [int(w) for w in row]
                     attr = None
-                else: # 执行
+                else: 
                     row, attr = [int(w) for w in row[:tmp]], np.array([float(w) for w in row[tmp:]])
-                    # print("--------row-----------")
-                    # print(row)
-                    # print("--------attr-----------")
-                    # print(attr)
                     g.add_node(j, att=attr)
-                    # print("--------添加节点后的图g-----------")
-                    # print(g)
                 if not row[0] in feat_dict:
                     mapped = len(feat_dict)
                     feat_dict[row[0]] = mapped
@@ -209,9 +191,7 @@ def load_data_our(dataset, degree_as_tag, Normalize):
 
                 n_edges += row[1]
                 for k in range(2, len(row)):
-                    g.add_edge(j, row[k])# 添加边
-                # print("--------添加边后的图g-------")
-                # print(g)
+                    g.add_edge(j, row[k])
 
             if node_features != []:
                 node_features = np.stack(node_features)
@@ -220,13 +200,7 @@ def load_data_our(dataset, degree_as_tag, Normalize):
                 node_features = None
                 node_feature_flag = False
 
-            # if not (dataset=="Mine_Graph")or not (dataset == "Mine_Graph_test"):
-            #     assert len(g) == n
-            # print("-----------node-------------")
-            # print(node_tags) # 一维矩阵：整数
-            # print("------------edge------------------")
-            # print(n_edges) # int，RML:90
-            g_list.append(S2VGraph(g, l, node_tags)) # len(g_list):1503个局部图 每个图有90个节点，89条边
+            g_list.append(S2VGraph(g, l, node_tags)) 
             num_node = n
 
     #add labels and edge_mat
@@ -240,18 +214,9 @@ def load_data_our(dataset, degree_as_tag, Normalize):
             g.neighbors[i] = g.neighbors[i]
             degree_list.append(len(g.neighbors[i]))
         g.max_neighbor = max(degree_list)
-        # print("-----------max_neighbor-------------")
-        # print( g.max_neighbor ) # 2
-
         g.label = label_dict[g.label]
-        # print("-----------g.label-------------")
-        # print(g.label)  # 0到5，代表RML的6中情感
-
         edges = [list(pair) for pair in g.g.edges()]
-        # print("-----------edges-------------")
-        # print(edges)  # [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17], [17, 18], [18, 19], [19, 20], [20, 21], [21, 22], [22, 23], [23, 24], [24, 25], [25, 26], [26, 27], [27, 28], [28, 29], [29, 30], [30, 31], [31, 32], [32, 33], [33, 34], [34, 35], [35, 36], [36, 37], [37, 38], [38, 39], [39, 40], [40, 41], [41, 42], [42, 43], [43, 44], [44, 45], [45, 46], [46, 47], [47, 48], [48, 49], [49, 50], [50, 51], [51, 52], [52, 53], [53, 54], [54, 55], [55, 56], [56, 57], [57, 58], [58, 59], [59, 60], [60, 61], [61, 62], [62, 63], [63, 64], [64, 65], [65, 66], [66, 67], [67, 68], [68, 69], [69, 70], [70, 71], [71, 72], [72, 73], [73, 74], [74, 75], [75, 76], [76, 77], [77, 78], [78, 79], [79, 80], [80, 81], [81, 82], [82, 83], [83, 84], [84, 85], [85, 86], [86, 87], [87, 88], [88, 89]]
         edges.extend([[i, j] for j, i in edges])
-
         deg_list = list(dict(g.g.degree(range(len(g.g)))).values())
         g.edge_mat = torch.LongTensor(edges).transpose(0,1)
 
@@ -259,7 +224,7 @@ def load_data_our(dataset, degree_as_tag, Normalize):
         for g in g_list:
             g.node_tags = list(dict(g.g.degree).values())
 
-    #Extracting unique tag labels   提取唯一标签
+    #Extracting unique tag labels   
     tagset = set([])
     for g in g_list:
         tagset = tagset.union(set(g.node_tags))
@@ -281,27 +246,18 @@ def load_data_our(dataset, degree_as_tag, Normalize):
     print('# maximum node tag: %d' % len(tagset))
 
     print("# data: %d" % len(g_list))
-    # print("--------g_list.len-----------")
-    # print(len(g_list))# 1503
+
 
     return g_list, len(label_dict), num_node
 
 def separate_data_our(graph_list, seed, fold_idx):
     assert 0 <= fold_idx and fold_idx < 10, "fold_idx must be from 0 to 9."
-    skf = StratifiedKFold(n_splits=fold_idx, shuffle = True, random_state = seed) # shuffle:如果设置为True，则会先打乱顺序再做划分; random_state:只有当shuffle设置为True的时候才会生效。当设定某个值时，模型的训练集和测试集就固定了，方便复现结果
+    skf = StratifiedKFold(n_splits=fold_idx, shuffle = True, random_state = seed) 
 
     labels = [graph.label for graph in graph_list]
     idx_list = []
     for idx in skf.split(np.zeros(len(labels)), labels):
         idx_list.append(idx)
-    # 原始的
-    # train_idx, test_idx = idx_list[fold_idx]
-    #
-    # train_graph_list = [graph_list[i] for i in train_idx]
-    #
-    # test_graph_list = [graph_list[i] for i in test_idx]
-    #
-    # return train_graph_list, test_graph_list
     train_portions = []
     test_portions = []
     for j in range(fold_idx):
